@@ -9,7 +9,7 @@ import AdDisplayScreen from './ad-display';
 
 export default function HomeScreen() {
   const [tvId, setTvId] = useState<string | null>(null);
-  const { isInGroup, ads } = useTvData(tvId);
+  const { isInGroup, ads, priorityStream } = useTvData(tvId);
 
   useEffect(() => {
     async function fetchTvId() {
@@ -20,7 +20,7 @@ export default function HomeScreen() {
   }, []);
 
   if (isInGroup) {
-    return <AdDisplayScreen ads={ads} />;
+    return <AdDisplayScreen ads={ads} priorityStream={priorityStream} />;
   }
 
   return (

@@ -3,21 +3,28 @@ import { useState, useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Video } from 'expo-av';
+import { WebView } from 'react-native-webview';
 
 interface Ad {
   type: 'image' | 'video';
   url: string;
   order: number;
-  duration?: number; // in seconds
+  duration?: number;
   localUri?: string;
   caching?: boolean;
 }
 
-interface AdDisplayScreenProps {
-  ads: Ad[];
+interface PriorityStream {
+  type: 'video' | 'youtube';
+  url: string;
 }
 
-export default function AdDisplayScreen({ ads }: AdDisplayScreenProps) {
+interface AdDisplayScreenProps {
+  ads: Ad[];
+  priorityStream: PriorityStream | null;
+}
+
+const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const adTimer = useRef<NodeJS.Timeout | null>(null);
   const videoRef = useRef<Video>(null);
@@ -33,73 +40,80 @@ export default function AdDisplayScreen({ ads }: AdDisplayScreenProps) {
   };
 
   useEffect(() => {
-    if (adTimer.current) {
-      clearTimeout(adTimer.current);
-    }
+    if (adTimer.current) clearTimeout(adTimer.current);
 
-    if (ads.length === 0 || !ads[currentAdIndex]) {
-      return;
-    }
+    if (ads.length === 0 || !ads[currentAdIndex]) return;
 
     const currentAd = ads[currentAdIndex];
-
-    if (currentAd.caching) {
-      // Don't set a timer if the ad is still downloading.
-      return;
-    }
+    if (currentAd.caching) return;
 
     if (currentAd.type === 'image') {
       const duration = (currentAd.duration || 10) * 1000;
       adTimer.current = setTimeout(playNextAd, duration);
     } else {
-      // For video, the onPlaybackStatusUpdate handles the next ad
       videoRef.current?.replayAsync();
     }
 
     return () => {
-      if (adTimer.current) {
-        clearTimeout(adTimer.current);
-      }
+      if (adTimer.current) clearTimeout(adTimer.current);
     };
   }, [currentAdIndex, ads]);
 
   if (ads.length === 0) {
-    return (
-      <View style={styles.container}>
-        <ThemedText>Waiting for ad to be scheduled</ThemedText>
-      </View>
-    );
+    return <ThemedText>Waiting for ad to be scheduled</ThemedText>;
   }
 
   const currentAd = ads[currentAdIndex];
-
-  // Determine the correct URI to use (local cache or remote)
   const uri = currentAd.localUri || currentAd.url;
 
+  if (currentAd.caching) {
+    return <ActivityIndicator size="large" color="#fff" />;
+  }
+
+  return (
+    <>
+      {currentAd.type === 'image' ? (
+        <Image key={uri} source={{ uri }} style={styles.adImage} />
+      ) : (
+        <Video
+          ref={videoRef}
+          key={uri}
+          source={{ uri }}
+          style={styles.adVideo}
+          shouldPlay
+          resizeMode="contain"
+          onPlaybackStatusUpdate={(status) => {
+            if (status.isLoaded && status.didJustFinish) playNextAd();
+          }}
+        />
+      )}
+    </>
+  );
+};
+
+const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
+  if (stream.type === 'youtube') {
+    return <WebView source={{ uri: stream.url }} style={styles.webView} />;
+  } else {
+    return (
+      <Video
+        source={{ uri: stream.url }}
+        style={styles.adVideo}
+        shouldPlay
+        isLooping
+        resizeMode="contain"
+      />
+    );
+  }
+};
+
+export default function AdDisplayScreen({ ads, priorityStream }: AdDisplayScreenProps) {
   return (
     <View style={styles.container}>
-      {currentAd.caching ? (
-        <ActivityIndicator size="large" color="#fff" />
+      {priorityStream ? (
+        <PriorityStreamPlayer stream={priorityStream} />
       ) : (
-        <>
-          {currentAd.type === 'image' ? (
-            <Image key={uri} source={{ uri }} style={styles.adImage} />
-          ) : (
-            <Video
-              ref={videoRef}
-              key={uri}
-              source={{ uri }}
-              style={styles.adVideo}
-              shouldPlay
-              resizeMode="contain"
-              onPlaybackStatusUpdate={(status) => {
-                if (status.isLoaded && status.didJustFinish) {
-                  playNextAd();
-                }
-              }}
-            />
-          )}
-        </>
+        <AdPlaylist ads={ads} />
       )}
     </View>
   );
@@ -118,6 +132,11 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   adVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  webView: {
+    flex: 1,
     width: '100%',
     height: '100%',
   },
