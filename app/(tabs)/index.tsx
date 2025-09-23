@@ -4,10 +4,12 @@ import { StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { getOrCreateTvId } from '@/lib/tv-id';
 import { ThemedText } from '@/components/themed-text';
-
+import { useTvData } from '@/hooks/use-tv-group';
+import AdDisplayScreen from './ad-display';
 
 export default function HomeScreen() {
   const [tvId, setTvId] = useState<string | null>(null);
+  const { isInGroup, ads } = useTvData(tvId);
 
   useEffect(() => {
     async function fetchTvId() {
@@ -16,6 +18,10 @@ export default function HomeScreen() {
     }
     fetchTvId();
   }, []);
+
+  if (isInGroup) {
+    return <AdDisplayScreen ads={ads} />;
+  }
 
   return (
     <View style={styles.container}>
