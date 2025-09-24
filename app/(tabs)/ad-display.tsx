@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -29,7 +29,6 @@ interface AdDisplayScreenProps {
 
 // --- Player Components ---
 
-// Correctly handles a single video ad with the new API
 const VideoAd = ({ uri, onEnd }: { uri: string; onEnd: () => void }) => {
   const player = useVideoPlayer(uri, (p) => {
     p.play();
@@ -40,7 +39,6 @@ const VideoAd = ({ uri, onEnd }: { uri: string; onEnd: () => void }) => {
   return <VideoView style={styles.video} player={player} />;
 };
 
-// Correctly handles looping priority video streams
 const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
   if (stream.type === 'youtube') {
     return <WebView source={{ uri: stream.url }} style={styles.webView} />;
@@ -54,37 +52,35 @@ const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
   return <VideoView style={styles.video} player={player} />;
 };
 
-// --- Main Ad Playlist Logic (Rewritten for correctness) ---
+// --- Main Ad Playlist Logic (Definitive Fix) ---
 
 const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
-  const imageAdTimer = useRef<NodeJS.Timeout | null>(null);
+  // A state to force re-renders, fixing the single-image-ad loop issue.
+  const [tick, setTick] = useState(0);
 
-  const playNextAd = () => {
+  // This function now robustly triggers the next ad and a re-render.
+  const playNextAd = useCallback(() => {
     if (ads.length > 0) {
       setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
+      setTick(t => t + 1); // This ensures the timer effect re-runs.
     }
-  };
+  }, [ads]);
 
-  // This effect now correctly handles the timer for image-based ads.
+  // This is the corrected timer logic. It now depends on the 'tick' state
+  // to ensure it re-runs even if the ad index doesn't change.
   useEffect(() => {
     const currentAd = ads[currentAdIndex];
-    if (currentAd?.type === 'image') {
-      const duration = (currentAd.duration || 10) * 1000;
-      imageAdTimer.current = setTimeout(playNextAd, duration);
-    } else {
-      // If it's not an image, clear any existing timer.
-      if (imageAdTimer.current) {
-        clearTimeout(imageAdTimer.current);
-      }
+
+    if (currentAd?.type !== 'image') {
+      return;
     }
 
-    return () => {
-      if (imageAdTimer.current) {
-        clearTimeout(imageAdTimer.current);
-      }
-    };
-  }, [currentAdIndex, ads]);
+    const duration = (currentAd.duration || 10) * 1000;
+    const timerId = setTimeout(playNextAd, duration);
+
+    return () => clearTimeout(timerId);
+  }, [currentAdIndex, ads, tick, playNextAd]);
 
   if (ads.length === 0) {
     return <ThemedText>Waiting for an ad to be scheduled...</ThemedText>;
@@ -95,25 +91,25 @@ const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
   if (!currentAd) {
     return <ThemedText>Loading ad...</ThemedText>;
   }
-  
+
   if (currentAd.caching) {
     return <ActivityIndicator size="large" color="#fff" />;
   }
 
   const uri = currentAd.localUri || currentAd.url;
 
-  // This logic correctly renders either an Image or a Video ad.
+  // The key is now a combination of the ad ID and the tick, guaranteeing
+  // that React will always re-mount the component for a new ad.
   return (
     <View style={styles.container}>
       {currentAd.type === 'image' ? (
-        <Image source={{ uri }} style={styles.adImage} />
+        <Image key={`${currentAd.id}-${tick}`} source={{ uri }} style={styles.adImage} />
       ) : (
-        <VideoAd uri={uri} onEnd={playNextAd} />
+        <VideoAd key={`${currentAd.id}-${tick}`} uri={uri} onEnd={playNextAd} />
       )}
     </View>
   );
 };
-
 
 // --- Top-Level Screen Component ---
 
