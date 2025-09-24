@@ -1,7 +1,7 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { WEBSOCKET_URL } from '@/constants/api';
 import { fetchTvState, Ad, PriorityStream } from '@/lib/api';
+// Correctly import the legacy FileSystem API to resolve the crash and silence warnings.
 import * as FileSystem from 'expo-file-system/legacy';
 
 const adCacheDir = FileSystem.cacheDirectory + 'ad-cache/';
@@ -33,35 +33,39 @@ const cleanupCache = async (activeAds: Ad[]) => {
   }
 };
 
-// --- Rewritten processAds for efficiency ---
-// This function now only calls setAds twice: once at the beginning to set the
-// initial caching state, and once at the end with the fully processed ads.
-// This prevents the constant re-renders that were breaking the ad timer.
 const processAds = async (ads: Ad[], setAds: React.Dispatch<React.SetStateAction<Ad[]>>) => {
   const initialAds = ads.map(ad => ({ ...ad, caching: true, localUri: undefined }));
   setAds(initialAds);
 
-  const processedAds = await Promise.all(
-    ads.map(async (ad) => {
-      const filename = getCacheFilename(ad.url);
-      const localUri = adCacheDir + filename;
-      const fileInfo = await FileSystem.getInfoAsync(localUri);
+  for (const ad of ads) {
+    const filename = getCacheFilename(ad.url);
+    const localUri = adCacheDir + filename;
+    const fileInfo = await FileSystem.getInfoAsync(localUri);
 
-      if (fileInfo.exists) {
-        return { ...ad, localUri, caching: false };
-      } else {
-        try {
-          const { uri } = await FileSystem.downloadAsync(ad.url, localUri);
-          return { ...ad, localUri: uri, caching: false };
-        } catch (error) {
-          console.error('Failed to download ad:', ad.url, error);
-          return { ...ad, caching: false }; // Mark as not caching to avoid infinite loading
-        }
+    if (fileInfo.exists) {
+      setAds(prevAds =>
+        prevAds.map(prevAd =>
+          prevAd.id === ad.id ? { ...prevAd, localUri, caching: false } : prevAd
+        )
+      );
+    } else {
+      try {
+        const { uri } = await FileSystem.downloadAsync(ad.url, localUri);
+        setAds(prevAds =>
+          prevAds.map(prevAd =>
+            prevAd.id === ad.id ? { ...prevAd, localUri: uri, caching: false } : prevAd
+          )
+        );
+      } catch (error) {
+        console.error('Failed to download ad:', ad.url, error);
+        setAds(prevAds =>
+          prevAds.map(prevAd =>
+            prevAd.id === ad.id ? { ...prevAd, caching: false } : prevAd
+          )
+        );
       }
-    })
-  );
-
-  setAds(processedAds);
+    }
+  }
 };
 
 export function useTvData(tvId: string | null) {
@@ -69,23 +73,12 @@ export function useTvData(tvId: string | null) {
   const [isInGroup, setIsInGroup] = useState(false);
   const [ads, setAds] = useState<Ad[]>([]);
   const [priorityStream, setPriorityStream] = useState<PriorityStream | null>(null);
-  // State to hold the raw ad data for comparison
-  const [rawAds, setRawAds] = useState<Ad[]>([]);
 
   const fetchAndSetState = useCallback(async (currentTvId: string) => {
     try {
       const state = await fetchTvState(currentTvId);
       const newAds = state.playlist?.ads || [];
 
-      // --- Optimization ---
-      // If the new ad data is the same as the old data, do nothing.
-      // This prevents the playlist from being needlessly reset.
-      if (JSON.stringify(rawAds) === JSON.stringify(newAds)) {
-        setIsLoading(false);
-        return;
-      }
-
-      setRawAds(newAds);
       setIsInGroup(!!state.group);
       setPriorityStream(state.group?.priorityStream || null);
       
@@ -94,13 +87,14 @@ export function useTvData(tvId: string | null) {
 
     } catch (error) {
       console.error("Failed to fetch and set state:", error);
+      // Handle error case, maybe show an error screen
       setIsInGroup(false);
       setAds([]);
       setPriorityStream(null);
     } finally {
       setIsLoading(false);
     }
-  }, [rawAds]); // Dependency on rawAds is key for the comparison
+  }, []);
 
   useEffect(() => {
     if (!tvId) return;
@@ -114,8 +108,11 @@ export function useTvData(tvId: string | null) {
     };
 
     ws.onmessage = (event) => {
+      // Log all incoming WebSocket messages for debugging purposes
+      console.log("WebSocket Message Received:", event.data);
       const message = JSON.parse(event.data);
       if (message.type === 'REFRESH_STATE') {
+        console.log("REFRESH_STATE message received, fetching latest state.");
         fetchAndSetState(tvId);
       }
     };
