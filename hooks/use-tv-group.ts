@@ -1,8 +1,9 @@
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import * as FileSystem from 'expo-file-system';
+import { useState, useEffect, useCallback } from 'react';
 import { WEBSOCKET_URL } from '@/constants/api';
 import { fetchTvState, Ad, PriorityStream } from '@/lib/api';
+// Import legacy FileSystem API to silence deprecation warning
+import { FileSystemLegacy as FileSystem } from 'expo-file-system';
 
 const adCacheDir = FileSystem.cacheDirectory + 'ad-cache/';
 
