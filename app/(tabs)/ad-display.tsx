@@ -2,10 +2,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
-import Video from 'expo-video'; // Corrected: Use default import
+import Video from 'expo-video';
 import { WebView } from 'react-native-webview';
 
+// ... (interfaces remain the same)
 interface Ad {
+  id: string;
   type: 'image' | 'video';
   url: string;
   order: number;
@@ -20,14 +22,28 @@ interface PriorityStream {
 }
 
 interface AdDisplayScreenProps {
-  ads: Ad[];
+  ads?: Ad[];
   priorityStream: PriorityStream | null;
 }
 
-const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
+
+const AdPlaylist = ({ ads }: { ads?: Ad[] }) => {
+  // Diagnostic logging
+  console.log('[AdPlaylist] Rendering - ads:', ads ? `Array[${ads.length}]` : ads);
+
+  // Definitive guard against undefined prop
+  if (!ads) {
+    // This state should not be hit if the parent component is correctly implemented,
+    // but it is the last line of defense against the crash.
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#fff" />
+        <ThemedText>Error: Ad data is missing.</ThemedText>
+      </View>
+    );
+  }
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const adTimer = useRef<NodeJS.Timeout | null>(null);
-  const videoRef = useRef<any>(null); // Use 'any' for ref type with default import
 
   useEffect(() => {
     setCurrentAdIndex(0);
@@ -40,12 +56,18 @@ const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
   };
 
   useEffect(() => {
-    if (adTimer.current) clearTimeout(adTimer.current);
+    if (adTimer.current) {
+      clearTimeout(adTimer.current);
+    }
 
-    if (ads.length === 0 || !ads[currentAdIndex]) return;
+    if (ads.length === 0 || !ads[currentAdIndex]) {
+      return;
+    }
 
     const currentAd = ads[currentAdIndex];
-    if (currentAd.caching) return;
+    if (currentAd.caching) {
+      return;
+    }
 
     if (currentAd.type === 'image') {
       const duration = (currentAd.duration || 10) * 1000;
@@ -53,7 +75,9 @@ const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
     }
 
     return () => {
-      if (adTimer.current) clearTimeout(adTimer.current);
+      if (adTimer.current) {
+        clearTimeout(adTimer.current);
+      }
     };
   }, [currentAdIndex, ads]);
 
@@ -62,6 +86,10 @@ const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
   }
 
   const currentAd = ads[currentAdIndex];
+  if (!currentAd) {
+    return <ThemedText>Loading ad...</ThemedText>;
+  }
+
   const uri = currentAd.localUri || currentAd.url;
 
   if (currentAd.caching) {
@@ -74,13 +102,15 @@ const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
         <Image key={uri} source={{ uri }} style={styles.adImage} />
       ) : (
         <Video
-          ref={videoRef}
           key={uri}
           source={{ uri }}
           style={styles.adVideo}
-          autoPlay={true}
-          contentFit="contain"
-          onEnd={playNextAd}
+          shouldPlay
+          onPlaybackStatusUpdate={(status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              playNextAd();
+            }
+          }}
         />
       )}
     </>
@@ -95,15 +125,17 @@ const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
       <Video
         source={{ uri: stream.url }}
         style={styles.adVideo}
-        autoPlay={true}
-        loop={true}
-        contentFit="contain"
+        shouldPlay
+        isLooping
       />
     );
   }
 };
 
 export default function AdDisplayScreen({ ads, priorityStream }: AdDisplayScreenProps) {
+  // Diagnostic logging
+  console.log('[AdDisplayScreen] Rendering - ads:', ads ? `Array[${ads.length}]` : ads);
+
   return (
     <View style={styles.container}>
       {priorityStream ? (

@@ -18,10 +18,11 @@ export default function HomeScreen() {
     fetchTvId();
   }, []);
 
-  // The useTvData hook now handles its own loading state
   const { isLoading, isInGroup, ads, priorityStream } = useTvData(tvId);
 
-  // Initial loading state while getting TV ID or first fetch
+  // Diagnostic logging to trace the `ads` prop
+  console.log('[HomeScreen] Rendering - isLoading:', isLoading, 'isInGroup:', isInGroup, 'ads:', ads ? `Array[${ads.length}]` : ads);
+
   if (isLoading || !tvId) {
     return (
       <View style={styles.container}>
@@ -31,12 +32,21 @@ export default function HomeScreen() {
     );
   }
 
-  // Once loaded, check if the TV is in a group
   if (isInGroup) {
-    return <AdDisplayScreen ads={ads} priorityStream={priorityStream} />;
+    // The check for `ads` is critical to prevent passing `undefined` during data fetching race conditions
+    if (ads) {
+      return <AdDisplayScreen ads={ads} priorityStream={priorityStream} />;
+    } else {
+      // This state should be temporary, but it's important to handle it gracefully
+      return (
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color="#fff" />
+          <ThemedText>Loading ad data...</ThemedText>
+        </View>
+      );
+    }
   }
 
-  // If not in a group, show the registration screen
   return (
     <View style={styles.container}>
       <ThemedText style={styles.instructions}>
