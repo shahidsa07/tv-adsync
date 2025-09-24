@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
-import { Video } from 'expo-video'; // Updated import
+import Video from 'expo-video'; // Corrected: Use default import
 import { WebView } from 'react-native-webview';
 
 interface Ad {
@@ -27,7 +27,7 @@ interface AdDisplayScreenProps {
 const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const adTimer = useRef<NodeJS.Timeout | null>(null);
-  const videoRef = useRef<Video>(null); // Ref type is now for the new Video component
+  const videoRef = useRef<any>(null); // Use 'any' for ref type with default import
 
   useEffect(() => {
     setCurrentAdIndex(0);
@@ -51,7 +51,6 @@ const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
       const duration = (currentAd.duration || 10) * 1000;
       adTimer.current = setTimeout(playNextAd, duration);
     }
-    // No need for replayAsync - autoplay and the key prop handle this.
 
     return () => {
       if (adTimer.current) clearTimeout(adTimer.current);
@@ -79,9 +78,9 @@ const AdPlaylist = ({ ads }: { ads: Ad[] }) => {
           key={uri}
           source={{ uri }}
           style={styles.adVideo}
-          autoPlay={true} // Updated prop
-          contentFit="contain" // Updated prop
-          onEnd={playNextAd} // Updated prop for finishing playback
+          autoPlay={true}
+          contentFit="contain"
+          onEnd={playNextAd}
         />
       )}
     </>
@@ -96,9 +95,9 @@ const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
       <Video
         source={{ uri: stream.url }}
         style={styles.adVideo}
-        autoPlay={true} // Updated prop
-        loop={true} // Updated prop
-        contentFit="contain" // Updated prop
+        autoPlay={true}
+        loop={true}
+        contentFit="contain"
       />
     );
   }

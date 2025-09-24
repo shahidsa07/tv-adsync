@@ -109,8 +109,11 @@ export function useTvData(tvId: string | null) {
     };
 
     ws.onmessage = (event) => {
+      // Log all incoming WebSocket messages for debugging purposes
+      console.log("WebSocket Message Received:", event.data);
       const message = JSON.parse(event.data);
       if (message.type === 'REFRESH_STATE') {
+        console.log("REFRESH_STATE message received, fetching latest state.");
         fetchAndSetState(tvId);
       }
     };
