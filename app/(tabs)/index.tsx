@@ -20,9 +20,6 @@ export default function HomeScreen() {
 
   const { isLoading, isInGroup, ads, priorityStream } = useTvData(tvId);
 
-  // Diagnostic logging to trace the `ads` prop
-  console.log('[HomeScreen] Rendering - isLoading:', isLoading, 'isInGroup:', isInGroup, 'ads:', ads ? `Array[${ads.length}]` : ads);
-
   if (isLoading || !tvId) {
     return (
       <View style={styles.container}>
@@ -33,11 +30,12 @@ export default function HomeScreen() {
   }
 
   if (isInGroup) {
-    // The check for `ads` is critical to prevent passing `undefined` during data fetching race conditions
+    // The `ads` array is now passed to the correctly implemented AdDisplayScreen.
+    // A check for `ads` is kept as a safeguard against race conditions.
     if (ads) {
       return <AdDisplayScreen ads={ads} priorityStream={priorityStream} />;
     } else {
-      // This state should be temporary, but it's important to handle it gracefully
+      // This handles the brief moment before the first ad data is available.
       return (
         <View style={styles.container}>
           <ActivityIndicator size="large" color="#fff" />

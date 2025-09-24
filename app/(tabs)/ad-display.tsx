@@ -2,10 +2,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
-import Video from 'expo-video';
+import { useVideoPlayer, VideoView, useEvent } from 'expo-video';
 import { WebView } from 'react-native-webview';
 
-// ... (interfaces remain the same)
+// --- Interfaces ---
 interface Ad {
   id: string;
   type: 'image' | 'video';
@@ -26,64 +26,67 @@ interface AdDisplayScreenProps {
   priorityStream: PriorityStream | null;
 }
 
+// --- Video Player Components (using the new expo-video API) ---
 
-const AdPlaylist = ({ ads }: { ads?: Ad[] }) => {
-  // Diagnostic logging
-  console.log('[AdPlaylist] Rendering - ads:', ads ? `Array[${ads.length}]` : ads);
+// This component handles a single video ad, using the new hooks.
+const VideoAd = ({ uri, onEnd }: { uri: string; onEnd: () => void }) => {
+  const player = useVideoPlayer(uri, (p) => {
+    p.play();
+  });
 
-  // Definitive guard against undefined prop
-  if (!ads) {
-    // This state should not be hit if the parent component is correctly implemented,
-    // but it is the last line of defense against the crash.
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#fff" />
-        <ThemedText>Error: Ad data is missing.</ThemedText>
-      </View>
-    );
+  // Listen for the 'ended' event to trigger the next ad
+  useEvent(player, 'ended', onEnd);
+
+  return <VideoView style={styles.video} player={player} />;
+};
+
+// This component handles the looping priority stream.
+const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
+  if (stream.type === 'youtube') {
+    return <WebView source={{ uri: stream.url }} style={styles.webView} />;
   }
+
+  const player = useVideoPlayer(stream.url, (p) => {
+    p.play();
+    p.loop = true;
+  });
+
+  return <VideoView style={styles.video} player={player} />;
+};
+
+// --- Main Ad Playlist Logic ---
+
+const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
-  const adTimer = useRef<NodeJS.Timeout | null>(null);
+  const imageAdTimer = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    setCurrentAdIndex(0);
-  }, [ads]);
-
-  const playNextAd = () => {
-    if (ads.length > 0) {
-      setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
-    }
-  };
-
-  useEffect(() => {
-    if (adTimer.current) {
-      clearTimeout(adTimer.current);
-    }
-
-    if (ads.length === 0 || !ads[currentAdIndex]) {
-      return;
-    }
-
-    const currentAd = ads[currentAdIndex];
-    if (currentAd.caching) {
-      return;
-    }
-
-    if (currentAd.type === 'image') {
-      const duration = (currentAd.duration || 10) * 1000;
-      adTimer.current = setTimeout(playNextAd, duration);
-    }
-
-    return () => {
-      if (adTimer.current) {
-        clearTimeout(adTimer.current);
-      }
-    };
-  }, [currentAdIndex, ads]);
-
+  // Guard clause for undefined or empty ads
   if (ads.length === 0) {
     return <ThemedText>Waiting for ad to be scheduled</ThemedText>;
   }
+
+  const playNextAd = () => {
+    setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
+  };
+
+  // Effect to handle image ad timers
+  useEffect(() => {
+    if (imageAdTimer.current) {
+      clearTimeout(imageAdTimer.current);
+    }
+
+    const currentAd = ads[currentAdIndex];
+    if (currentAd?.type === 'image') {
+      const duration = (currentAd.duration || 10) * 1000;
+      imageAdTimer.current = setTimeout(playNextAd, duration);
+    }
+
+    return () => {
+      if (imageAdTimer.current) {
+        clearTimeout(imageAdTimer.current);
+      }
+    };
+  }, [currentAdIndex, ads]);
 
   const currentAd = ads[currentAdIndex];
   if (!currentAd) {
@@ -96,46 +99,21 @@ const AdPlaylist = ({ ads }: { ads?: Ad[] }) => {
     return <ActivityIndicator size="large" color="#fff" />;
   }
 
+  // Render the correct component based on ad type
   return (
-    <>
+    <View style={styles.container}>
       {currentAd.type === 'image' ? (
         <Image key={uri} source={{ uri }} style={styles.adImage} />
       ) : (
-        <Video
-          key={uri}
-          source={{ uri }}
-          style={styles.adVideo}
-          shouldPlay
-          onPlaybackStatusUpdate={(status) => {
-            if (status.isLoaded && status.didJustFinish) {
-              playNextAd();
-            }
-          }}
-        />
+        <VideoAd key={uri} uri={uri} onEnd={playNextAd} />
       )}
-    </>
+    </View>
   );
 };
 
-const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
-  if (stream.type === 'youtube') {
-    return <WebView source={{ uri: stream.url }} style={styles.webView} />;
-  } else {
-    return (
-      <Video
-        source={{ uri: stream.url }}
-        style={styles.adVideo}
-        shouldPlay
-        isLooping
-      />
-    );
-  }
-};
+// --- Top-Level Screen Component ---
 
 export default function AdDisplayScreen({ ads, priorityStream }: AdDisplayScreenProps) {
-  // Diagnostic logging
-  console.log('[AdDisplayScreen] Rendering - ads:', ads ? `Array[${ads.length}]` : ads);
-
   return (
     <View style={styles.container}>
       {priorityStream ? (
@@ -146,6 +124,8 @@ export default function AdDisplayScreen({ ads, priorityStream }: AdDisplayScreen
     </View>
   );
 }
+
+// --- Styles ---
 
 const styles = StyleSheet.create({
   container: {
@@ -159,7 +139,7 @@ const styles = StyleSheet.create({
     height: '100%',
     resizeMode: 'contain',
   },
-  adVideo: {
+  video: {
     width: '100%',
     height: '100%',
   },
