@@ -27,9 +27,18 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {tvId ? (
         <>
-          <ThemedText>Scan to add this TV to the admin server</ThemedText>
-          <QRCode value={tvId} size={200} />
-          <ThemedText style={styles.tvId}>{tvId}</ThemedText>
+          <ThemedText style={styles.instructions}>
+            Scan the code with your admin app, or enter the ID below:
+          </ThemedText>
+          <View style={styles.registrationInfo}>
+            <QRCode
+              value={tvId}
+              size={250}
+              backgroundColor='#fff'
+              color='#000'
+            />
+            <ThemedText style={styles.tvId}>{tvId}</ThemedText>
+          </View>
         </>
       ) : (
         <ThemedText>Generating TV ID...</ThemedText>
@@ -43,10 +52,22 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
+    backgroundColor: '#000',
+    padding: 20,
+  },
+  instructions: {
+    fontSize: 22,
+    textAlign: 'center',
+    color: '#ccc',
+    marginBottom: 32,
+  },
+  registrationInfo: {
+    alignItems: 'center',
+    gap: 32,
   },
   tvId: {
-    fontSize: 18,
+    fontSize: 48,
     fontWeight: 'bold',
+    color: '#fff',
   },
 });
