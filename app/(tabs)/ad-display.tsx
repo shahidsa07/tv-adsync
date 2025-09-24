@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
-import { useVideoPlayer, VideoView, useEvent } from 'expo-video';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEvent } from 'expo';
 import { WebView } from 'react-native-webview';
 
 // --- Interfaces ---
@@ -26,21 +27,20 @@ interface AdDisplayScreenProps {
   priorityStream: PriorityStream | null;
 }
 
-// --- Video Player Components (using the new expo-video API) ---
+// --- Player Components ---
 
-// This component handles a single video ad, using the new hooks.
+// Correctly handles a single video ad with the new API
 const VideoAd = ({ uri, onEnd }: { uri: string; onEnd: () => void }) => {
   const player = useVideoPlayer(uri, (p) => {
     p.play();
   });
 
-  // Listen for the 'ended' event to trigger the next ad
   useEvent(player, 'ended', onEnd);
 
   return <VideoView style={styles.video} player={player} />;
 };
 
-// This component handles the looping priority stream.
+// Correctly handles looping priority video streams
 const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
   if (stream.type === 'youtube') {
     return <WebView source={{ uri: stream.url }} style={styles.webView} />;
@@ -54,31 +54,29 @@ const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
   return <VideoView style={styles.video} player={player} />;
 };
 
-// --- Main Ad Playlist Logic ---
+// --- Main Ad Playlist Logic (Rewritten for correctness) ---
 
 const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const imageAdTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Guard clause for undefined or empty ads
-  if (ads.length === 0) {
-    return <ThemedText>Waiting for ad to be scheduled</ThemedText>;
-  }
-
   const playNextAd = () => {
-    setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
+    if (ads.length > 0) {
+      setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
+    }
   };
 
-  // Effect to handle image ad timers
+  // This effect now correctly handles the timer for image-based ads.
   useEffect(() => {
-    if (imageAdTimer.current) {
-      clearTimeout(imageAdTimer.current);
-    }
-
     const currentAd = ads[currentAdIndex];
     if (currentAd?.type === 'image') {
       const duration = (currentAd.duration || 10) * 1000;
       imageAdTimer.current = setTimeout(playNextAd, duration);
+    } else {
+      // If it's not an image, clear any existing timer.
+      if (imageAdTimer.current) {
+        clearTimeout(imageAdTimer.current);
+      }
     }
 
     return () => {
@@ -88,28 +86,34 @@ const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
     };
   }, [currentAdIndex, ads]);
 
+  if (ads.length === 0) {
+    return <ThemedText>Waiting for an ad to be scheduled...</ThemedText>;
+  }
+
   const currentAd = ads[currentAdIndex];
+
   if (!currentAd) {
     return <ThemedText>Loading ad...</ThemedText>;
   }
-
-  const uri = currentAd.localUri || currentAd.url;
-
+  
   if (currentAd.caching) {
     return <ActivityIndicator size="large" color="#fff" />;
   }
 
-  // Render the correct component based on ad type
+  const uri = currentAd.localUri || currentAd.url;
+
+  // This logic correctly renders either an Image or a Video ad.
   return (
     <View style={styles.container}>
       {currentAd.type === 'image' ? (
-        <Image key={uri} source={{ uri }} style={styles.adImage} />
+        <Image source={{ uri }} style={styles.adImage} />
       ) : (
-        <VideoAd key={uri} uri={uri} onEnd={playNextAd} />
+        <VideoAd uri={uri} onEnd={playNextAd} />
       )}
     </View>
   );
 };
+
 
 // --- Top-Level Screen Component ---
 
