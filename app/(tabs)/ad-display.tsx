@@ -31,7 +31,11 @@ const AdPlayer = ({
   }, [ad, onAdEnd]);
 
   if (ad.caching) {
-    return <ThemedText>Caching...</ThemedText>;
+    return (
+      <View style={styles.container}>
+        <ThemedText>Caching...</ThemedText>
+      </View>
+    );
   }
 
   return (
@@ -82,7 +86,7 @@ export default function AdDisplayScreen({
 
   const handleAdEnd = () => {
     if (ads.length > 0) {
-        setCurrentAdIndex((prev) => (prev + 1) % ads.length);
+      setCurrentAdIndex((prev) => (prev + 1) % ads.length);
     }
   };
 
@@ -111,7 +115,7 @@ export default function AdDisplayScreen({
 
   if (!ads.length) {
     return (
-      <View>
+      <View style={styles.container}>
         <ThemedText>Waiting for an ad to be scheduled...</ThemedText>
       </View>
     );
@@ -120,11 +124,11 @@ export default function AdDisplayScreen({
   // This check prevents a crash if the currentAdIndex is out of bounds
   // before the useEffect has a chance to run.
   if (currentAdIndex >= ads.length) {
-      return (
-          <View>
-              <ThemedText>Loading...</ThemedText>
-          </View>
-      )
+    return (
+      <View style={styles.container}>
+        <ThemedText>Loading...</ThemedText>
+      </View>
+    );
   }
 
   return (
@@ -136,4 +140,13 @@ export default function AdDisplayScreen({
   );
 }
 
-const styles = StyleSheet.create({});
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#000",
+    width: "100%",
+    height: "100%",
+  },
+});
