@@ -73,8 +73,17 @@ export default function AdDisplayScreen({
 }) {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
 
+  useEffect(() => {
+    // If the currently displayed ad is removed from the playlist, reset to the first ad.
+    if (currentAdIndex >= ads.length) {
+      setCurrentAdIndex(0);
+    }
+  }, [ads]);
+
   const handleAdEnd = () => {
-    setCurrentAdIndex((prev) => (prev + 1) % ads.length);
+    if (ads.length > 0) {
+        setCurrentAdIndex((prev) => (prev + 1) % ads.length);
+    }
   };
 
   if (priorityStream) {
@@ -106,6 +115,16 @@ export default function AdDisplayScreen({
         <ThemedText>Waiting for an ad to be scheduled...</ThemedText>
       </View>
     );
+  }
+
+  // This check prevents a crash if the currentAdIndex is out of bounds
+  // before the useEffect has a chance to run.
+  if (currentAdIndex >= ads.length) {
+      return (
+          <View>
+              <ThemedText>Loading...</ThemedText>
+          </View>
+      )
   }
 
   return (
