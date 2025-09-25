@@ -10,24 +10,31 @@ const getCacheFilename = (url: string) => {
   return url.substring(url.lastIndexOf("/") + 1);
 };
 
-// Function to ensure the cache directory exists
+// Function to ensure the cache directory exists using the new FileSystem API
 const ensureDirExists = async () => {
-  // Using makeDirectoryAsync with intermediates: true ensures the directory exists
-  // and doesn't throw an error if it already exists.
-  await FileSystem.makeDirectoryAsync(adCacheDir, { intermediates: true });
+  const dir = new FileSystem.Directory(adCacheDir);
+  if (!(await dir.exists())) {
+    await dir.create();
+  }
 };
 
-// Function to clean up old ad files from the cache
+// Function to clean up old ad files from the cache using the new FileSystem API
 const cleanupCache = async (activeAds: Ad[]) => {
   try {
     await ensureDirExists();
     const activeFilenames = new Set(activeAds.map((ad) => getCacheFilename(ad.url)));
-    const cachedFiles = await FileSystem.readDirectoryAsync(adCacheDir);
+    const dir = new FileSystem.Directory(adCacheDir);
+    if (!(await dir.exists())) return; // No cache directory, nothing to clean.
+
+    const cachedFiles = await dir.read();
 
     for (const filename of cachedFiles) {
       if (!activeFilenames.has(filename)) {
         console.log("deleting", filename);
-        await FileSystem.deleteAsync(adCacheDir + filename, { idempotent: true });
+        const fileToDelete = new FileSystem.File(adCacheDir + filename);
+        if (await fileToDelete.exists()) {
+            await fileToDelete.delete();
+        }
       }
     }
   } catch (error) {
@@ -35,29 +42,19 @@ const cleanupCache = async (activeAds: Ad[]) => {
   }
 };
 
+// Function to process ads, check cache, and download if necessary, using the new FileSystem API
 const processAds = async (
   ads: Ad[],
   setAds: React.Dispatch<React.SetStateAction<Ad[]>>
 ) => {
   await ensureDirExists();
 
-  // Using a sequential for...of loop to process ads one by one.
-  // This avoids race conditions from parallel state updates and fixes the timer bug.
   for (const ad of ads) {
     const filename = getCacheFilename(ad.url);
     const localUri = adCacheDir + filename;
+    const adFile = new FileSystem.File(localUri);
 
-    let fileExists = false;
-    try {
-      // Check for file existence by trying to access its content URI.
-      // This will throw an error if the file doesn't exist.
-      await FileSystem.getContentUriAsync(localUri);
-      fileExists = true;
-    } catch (e) {
-      fileExists = false;
-    }
-
-    if (fileExists) {
+    if (await adFile.exists()) {
       setAds((prev) =>
         prev.map((prevAd) =>
           prevAd.id === ad.id ? { ...prevAd, localUri, caching: false } : prevAd
@@ -79,7 +76,6 @@ const processAds = async (
         );
       } catch (error) {
         console.error("Failed to download ad:", ad.url, error);
-        // If download fails, just mark caching as false
         setAds((prev) =>
           prev.map((prevAd) =>
             prevAd.id === ad.id ? { ...prevAd, caching: false } : prevAd
@@ -108,7 +104,7 @@ export function useTvData(tvId: string | null) {
         await cleanupCache(state.playlist.ads);
         await processAds(state.playlist.ads, setAds);
       }
-    } catch (error) { 
+    } catch (error) {
       console.error(error);
       setIsInGroup(false);
       setAds([]);
