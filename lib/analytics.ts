@@ -1,5 +1,5 @@
 
-import { getBaseUrl } from "@/lib/get-base-url";
+import { API_BASE_URL } from "@/constants/api";
 
 export async function recordAdPlayback({
   adId,
@@ -10,8 +10,7 @@ export async function recordAdPlayback({
   tvId: string;
   duration: number;
 }) {
-  const baseUrl = getBaseUrl();
-  const url = `${baseUrl}/api/analytics/record-play`;
+  const url = `${API_BASE_URL}/analytics/record-play`;
 
   try {
     const response = await fetch(url, {
