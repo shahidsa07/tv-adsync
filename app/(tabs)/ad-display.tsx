@@ -85,6 +85,7 @@ export default function AdDisplayScreen({
   tvId: string;
 }) {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
+  const [adPlayCount, setAdPlayCount] = useState(0);
 
   useEffect(() => {
     // If the currently displayed ad is removed from the playlist, reset to the first ad.
@@ -95,7 +96,11 @@ export default function AdDisplayScreen({
 
   const handleAdEnd = () => {
     if (ads.length > 0) {
-      setCurrentAdIndex((prev) => (prev + 1) % ads.length);
+      if (ads.length === 1) {
+        setAdPlayCount((prev) => prev + 1);
+      } else {
+        setCurrentAdIndex((prev) => (prev + 1) % ads.length);
+      }
     }
   };
 
@@ -142,7 +147,7 @@ export default function AdDisplayScreen({
 
   return (
     <AdPlayer
-      key={ads[currentAdIndex].id}
+      key={`${ads[currentAdIndex].id}-${adPlayCount}`}
       ad={ads[currentAdIndex]}
       tvId={tvId}
       onAdEnd={handleAdEnd}
