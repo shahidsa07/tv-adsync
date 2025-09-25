@@ -1,7 +1,7 @@
 
 import { WEBSOCKET_URL } from "@/constants/api";
 import { Ad, PriorityStream, fetchTvState } from "@/lib/api";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { useEffect, useState } from "react";
 
 const adCacheDir = FileSystem.cacheDirectory + "ad-cache/";
