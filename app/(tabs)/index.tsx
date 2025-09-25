@@ -85,5 +85,6 @@ const styles = StyleSheet.create({
     fontSize: 48,
     fontWeight: 'bold',
     color: '#fff',
+    lineHeight: 60, // Added to prevent text clipping
   },
 });
