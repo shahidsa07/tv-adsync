@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "adsync",
-    "slug": "adsync",
+    "name": "NextAds",
+    "slug": "nextads",
     "version": "1.0.0",
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
-    "scheme": "adsync",
+    "scheme": "nextads",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
@@ -20,7 +20,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.adsync",
+      "package": "com.anonymous.nextads",
       "uiMode": "television",
       "intentFilters": [
         {
