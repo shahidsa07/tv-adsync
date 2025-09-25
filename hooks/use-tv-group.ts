@@ -4,7 +4,7 @@ import { Ad, PriorityStream, fetchTvState } from "@/lib/api";
 import * as FileSystem from "expo-file-system";
 import { useEffect, useState } from "react";
 
-const adCacheDir = FileSystem.cacheDirectory + "ad-cache/";
+const adCacheDir = FileSystem.cacheDirectory + "/ad-cache/";
 
 const getCacheFilename = (url: string) => {
   return url.substring(url.lastIndexOf("/") + 1);
