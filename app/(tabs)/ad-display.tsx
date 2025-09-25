@@ -29,8 +29,6 @@ interface AdDisplayScreenProps {
 
 // --- Player Components ---
 
-// This player is for the priority stream, which is a simple, single-source loop.
-// It does not have the complexity of the main ad playlist.
 const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
   if (stream.type === 'youtube') {
     return <WebView source={{ uri: stream.url }} style={styles.webView} />;
@@ -44,16 +42,16 @@ const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
   return <VideoView style={styles.video} player={player} />;
 };
 
-// --- Main Ad Playlist Logic (Definitive Crash Fix) ---
+// --- Main Ad Playlist Logic (Definitive Conditional Rendering Fix) ---
 
 const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
-  // 'tick' state still helps ensure image timers are correctly reset.
   const [tick, setTick] = useState(0);
 
-  // A single, persistent player that is never unmounted. This is the core of the fix.
+  // The single, persistent player. Its lifecycle is managed here and it is
+  // passed to the VideoView only when a video is being rendered.
   const player = useVideoPlayer(null, p => {
-    p.muted = true; // Mute audio by default, can be changed if needed.
+    p.muted = true;
     p.play();
   });
 
@@ -64,12 +62,10 @@ const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
     }
   }, [ads.length]);
 
-  // This event listener handles when a video ad finishes playing.
   useEvent(player, 'ended', playNextAd);
 
   const currentAd = ads.length > 0 ? ads[currentAdIndex] : null;
 
-  // This effect is the main orchestrator for the playlist.
   useEffect(() => {
     if (!currentAd) return;
 
@@ -77,30 +73,22 @@ const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
     const uri = currentAd.localUri || currentAd.url;
 
     if (currentAd.type === 'image') {
-      // For images, we ensure the video player is paused.
-      if (player.isPlaying) {
-        player.pause();
-      }
-      // And we set a timer to advance to the next ad.
+      player.replace(null);
       const duration = (currentAd.duration || 10) * 1000;
       imageTimer = setTimeout(playNextAd, duration);
     } else if (currentAd.type === 'video') {
-      // For videos, we check if the player's source is different.
-      // If it is, we replace it. This is more efficient than creating a new player.
       if (player.source?.uri !== uri) {
         player.replace(uri);
       }
-      // Ensure the player is playing.
       player.play();
     }
 
-    // The cleanup function clears the timer to prevent memory leaks.
     return () => {
       if (imageTimer) {
         clearTimeout(imageTimer);
       }
     };
-  }, [currentAd, tick, player, playNextAd]); // Depends on the current ad and the tick.
+  }, [currentAd, tick, player, playNextAd]);
 
   // --- Render Logic ---
 
@@ -116,22 +104,16 @@ const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
     return <ActivityIndicator size="large" color="#fff" />;
   }
 
-  const isVideo = currentAd.type === 'video';
-  const isImage = currentAd.type === 'image';
   const uri = currentAd.localUri || currentAd.url;
 
+  // This is the definitive fix: We conditionally render the component for the
+  // current ad type. This is the cleanest and most reliable way.
   return (
     <View style={styles.container}>
-      {/*
-        The VideoView is now *always* rendered, preventing the unmount/remount cycle.
-        Its visibility is controlled by the 'display' style property.
-        This prevents the "shared object was already released" native crash.
-      */}
-      <VideoView
-        player={player}
-        style={[styles.video, { display: isVideo ? 'flex' : 'none' }]}
-      />
-      {isImage && uri && (
+      {currentAd.type === 'video' && (
+        <VideoView player={player} style={styles.video} />
+      )}
+      {currentAd.type === 'image' && uri && (
         <Image
           key={`${currentAd.id}-${tick}`}
           source={{ uri }}
