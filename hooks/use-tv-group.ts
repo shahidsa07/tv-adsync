@@ -1,15 +1,16 @@
 
-import { useState, useEffect, useCallback } from 'react';
-import { WEBSOCKET_URL } from '@/constants/api';
-import { fetchTvState, Ad, PriorityStream } from '@/lib/api';
-import * as FileSystem from 'expo-file-system/legacy';
+import { WEBSOCKET_URL } from "@/constants/api";
+import { Ad, PriorityStream, fetchTvState } from "@/lib/api";
+import * as FileSystem from "expo-file-system";
+import { useEffect, useState } from "react";
 
-const adCacheDir = FileSystem.cacheDirectory + 'ad-cache/';
+const adCacheDir = FileSystem.cacheDirectory + "ad-cache/";
 
 const getCacheFilename = (url: string) => {
-  return url.substring(url.lastIndexOf('/') + 1).replace(/[^a-zA-Z0-9.-]/g, '_');
+  return url.substring(url.lastIndexOf("/") + 1);
 };
 
+// Function to ensure the cache directory exists
 const ensureDirExists = async () => {
   const dirInfo = await FileSystem.getInfoAsync(adCacheDir);
   if (!dirInfo.exists) {
@@ -17,88 +18,94 @@ const ensureDirExists = async () => {
   }
 };
 
+// Function to clean up old ad files from the cache
 const cleanupCache = async (activeAds: Ad[]) => {
   try {
     await ensureDirExists();
-    const activeFilenames = new Set(activeAds.map(ad => getCacheFilename(ad.url)));
+    const activeFilenames = new Set(activeAds.map((ad) => getCacheFilename(ad.url)));
     const cachedFiles = await FileSystem.readDirectoryAsync(adCacheDir);
 
     for (const filename of cachedFiles) {
       if (!activeFilenames.has(filename)) {
+        console.log("deleting", filename);
         await FileSystem.deleteAsync(adCacheDir + filename);
       }
     }
   } catch (error) {
-    console.error('Failed to clean up cache:', error);
+    console.error("Failed to clean up cache:", error);
   }
 };
 
-// --- Rewritten processAds for efficiency ---
-// This function now only calls setAds twice: once at the beginning and once at the end.
-// This prevents the constant re-renders that were breaking the ad timer.
-const processAds = async (ads: Ad[], setAds: React.Dispatch<React.SetStateAction<Ad[]>>) => {
-  const initialAds = ads.map(ad => ({ ...ad, caching: true, localUri: undefined }));
-  setAds(initialAds);
+const processAds = async (
+  ads: Ad[],
+  setAds: React.Dispatch<React.SetStateAction<Ad[]>>
+) => {
+  await ensureDirExists();
 
-  const processedAds = await Promise.all(
-    ads.map(async (ad) => {
-      const filename = getCacheFilename(ad.url);
-      const localUri = adCacheDir + filename;
-      const fileInfo = await FileSystem.getInfoAsync(localUri);
+  ads.forEach(async (ad, i) => {
+    const filename = getCacheFilename(ad.url);
+    const localUri = adCacheDir + filename;
+    const fileInfo = await FileSystem.getInfoAsync(localUri);
 
-      if (fileInfo.exists) {
-        return { ...ad, localUri, caching: false };
-      } else {
-        try {
-          const { uri } = await FileSystem.downloadAsync(ad.url, localUri);
-          return { ...ad, localUri: uri, caching: false };
-        } catch (error) {
-          console.error('Failed to download ad:', ad.url, error);
-          return { ...ad, caching: false }; // Mark as not caching to avoid infinite loading
-        }
+    if (fileInfo.exists) {
+      setAds((prev) =>
+        prev.map((prevAd) =>
+          prevAd.id === ad.id ? { ...prevAd, localUri, caching: false } : prevAd
+        )
+      );
+    } else {
+      setAds((prev) =>
+        prev.map((prevAd) =>
+          prevAd.id === ad.id ? { ...prevAd, caching: true } : prevAd
+        )
+      );
+      try {
+        console.log("downloading", ad.url);
+        const { uri } = await FileSystem.downloadAsync(ad.url, localUri);
+        setAds((prev) =>
+          prev.map((prevAd) =>
+            prevAd.id === ad.id ? { ...prevAd, localUri: uri, caching: false } : prevAd
+          )
+        );
+      } catch (error) {
+        console.error("Failed to download ad:", ad.url, error);
+        setAds((prev) =>
+          prev.map((prevAd) =>
+            prevAd.id === ad.id ? { ...prevAd, caching: false } : prevAd
+          )
+        );
       }
-    })
-  );
-
-  setAds(processedAds);
+    }
+  });
 };
 
 export function useTvData(tvId: string | null) {
   const [isLoading, setIsLoading] = useState(true);
   const [isInGroup, setIsInGroup] = useState(false);
   const [ads, setAds] = useState<Ad[]>([]);
-  const [priorityStream, setPriorityStream] = useState<PriorityStream | null>(null);
-  // State to hold the raw ad data for comparison
-  const [rawAds, setRawAds] = useState<Ad[]>([]);
+  const [priorityStream, setPriorityStream] = useState<PriorityStream | null>(
+    null
+  );
 
-  const fetchAndSetState = useCallback(async (currentTvId: string) => {
+  const fetchAndSetState = async (currentTvId: string) => {
     try {
       const state = await fetchTvState(currentTvId);
-      const newAds = state.playlist?.ads || [];
-
-      // --- Optimization ---
-      // If the new ad data is the same as the old data, do nothing.
-      if (JSON.stringify(rawAds) === JSON.stringify(newAds)) {
-        setIsLoading(false);
-        return;
-      }
-
-      setRawAds(newAds);
       setIsInGroup(!!state.group);
-      setPriorityStream(state.group?.priorityStream || null);
-      
-      await cleanupCache(newAds);
-      await processAds(newAds, setAds);
-
+      setAds(state.playlist?.ads ?? []);
+      setPriorityStream(state.group?.priorityStream ?? null);
+      if (state.playlist?.ads) {
+        cleanupCache(state.playlist.ads);
+        processAds(state.playlist.ads, setAds);
+      }
     } catch (error) {
-      console.error("Failed to fetch and set state:", error);
+      console.error(error);
       setIsInGroup(false);
       setAds([]);
       setPriorityStream(null);
     } finally {
       setIsLoading(false);
     }
-  }, [rawAds]); // Dependency on rawAds is key for the comparison
+  };
 
   useEffect(() => {
     if (!tvId) return;
@@ -108,24 +115,26 @@ export function useTvData(tvId: string | null) {
     const ws = new WebSocket(WEBSOCKET_URL);
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'register', payload: { tvId } }));
+      console.log("connected");
+      ws.send(JSON.stringify({ type: "register", payload: { tvId } }));
     };
 
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data);
-      if (message.type === 'REFRESH_STATE') {
+      console.log(message);
+      if (message.type === "REFRESH_STATE") {
         fetchAndSetState(tvId);
       }
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket Error:', error);
+      console.error("WebSocket Error:", error);
     };
 
     return () => {
       ws.close();
     };
-  }, [tvId, fetchAndSetState]);
+  }, [tvId]);
 
   return { isLoading, isInGroup, ads, priorityStream };
 }
