@@ -1,12 +1,9 @@
-
 import { WEBSOCKET_URL } from "@/constants/api";
 import { Ad, PriorityStream, fetchTvState } from "@/lib/api";
-import * as FileSystem from "expo-file-system";
+import { File, Directory, Paths } from "expo-file-system";
 import { useEffect, useState } from "react";
 
-const cacheDirUri = FileSystem.cacheDirectory + 'ad-cache/';
-const adCacheDir = new FileSystem.Directory(cacheDirUri);
-
+const adCacheDir = new Directory(Paths.cache, "ad-cache");
 
 // Generate a local filename from URL
 const getCacheFilename = (url: string) => {
@@ -26,14 +23,13 @@ const cleanupCache = async (activeAds: Ad[]) => {
     await ensureDirExists();
     const activeFilenames = new Set(activeAds.map((ad) => getCacheFilename(ad.url)));
 
-    const cachedFiles = await adCacheDir.read();
+    const contents = await adCacheDir.list();
 
-    for (const filename of cachedFiles) {
-      if (!activeFilenames.has(filename)) {
-        console.log("deleting", filename);
-        const fileToDelete = new FileSystem.File(adCacheDir.uri + filename);
-        if (await fileToDelete.exists()) {
-          await fileToDelete.delete();
+    for (const item of contents) {
+      if (item instanceof File) {
+        if (!activeFilenames.has(item.name)) {
+          console.log("deleting", item.name);
+          await item.delete();
         }
       }
     }
@@ -51,13 +47,15 @@ const processAds = async (
 
   for (const ad of ads) {
     const filename = getCacheFilename(ad.url);
-    const adFile = new FileSystem.File(adCacheDir.uri + filename);
+    const adFile = new File(adCacheDir, filename);
 
     if (await adFile.exists()) {
       // Already cached
       setAds((prev) =>
         prev.map((prevAd) =>
-          prevAd.id === ad.id ? { ...prevAd, localUri: adFile.uri, caching: false } : prevAd
+          prevAd.id === ad.id
+            ? { ...prevAd, localUri: adFile.uri, caching: false }
+            : prevAd
         )
       );
     } else {
@@ -69,10 +67,13 @@ const processAds = async (
       );
       try {
         console.log("downloading", ad.url);
-        const { uri } = await adFile.download(ad.url);
+        const result = await File.downloadFileAsync(ad.url, adFile);
+        const uri = result.uri;
         setAds((prev) =>
           prev.map((prevAd) =>
-            prevAd.id === ad.id ? { ...prevAd, localUri: uri, caching: false } : prevAd
+            prevAd.id === ad.id
+              ? { ...prevAd, localUri: uri, caching: false }
+              : prevAd
           )
         );
       } catch (error) {
