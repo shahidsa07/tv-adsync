@@ -1,10 +1,10 @@
 
 import { WEBSOCKET_URL } from "@/constants/api";
 import { Ad, PriorityStream, fetchTvState } from "@/lib/api";
-import { Directory, File } from "expo-file-system";
+import * as FileSystem from "expo-file-system";
 import { useEffect, useState } from "react";
 
-const adCacheDir = new Directory("cache://ad-cache");
+const adCacheDir = new FileSystem.Directory(FileSystem.cacheDirectory + "ad-cache");
 
 // Generate a local filename from URL
 const getCacheFilename = (url: string) => {
@@ -30,7 +30,7 @@ const cleanupCache = async (activeAds: Ad[]) => {
       if (!activeFilenames.has(filename)) {
         console.log("deleting", filename);
         const fileUri = `${adCacheDir.uri}/${filename}`;
-        const fileToDelete = new File(fileUri);
+        const fileToDelete = new FileSystem.File(fileUri);
         if (await fileToDelete.exists()) {
           await fileToDelete.delete();
         }
@@ -51,7 +51,7 @@ const processAds = async (
   for (const ad of ads) {
     const filename = getCacheFilename(ad.url);
     const fileUri = `${adCacheDir.uri}/${filename}`;
-    const adFile = new File(fileUri);
+    const adFile = new FileSystem.File(fileUri);
 
     if (await adFile.exists()) {
       // Already cached
