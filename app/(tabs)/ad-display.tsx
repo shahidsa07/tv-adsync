@@ -27,18 +27,10 @@ interface AdDisplayScreenProps {
   priorityStream: PriorityStream | null;
 }
 
-// --- Player Components (Using expo-video) ---
+// --- Player Components ---
 
-const VideoAd = ({ uri, onEnd }: { uri: string; onEnd: () => void }) => {
-  const player = useVideoPlayer(uri, (p) => {
-    p.play();
-  });
-
-  useEvent(player, 'ended', onEnd);
-
-  return <VideoView style={styles.video} player={player} />;
-};
-
+// This player is for the priority stream, which is a simple, single-source loop.
+// It does not have the complexity of the main ad playlist.
 const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
   if (stream.type === 'youtube') {
     return <WebView source={{ uri: stream.url }} style={styles.webView} />;
@@ -52,40 +44,69 @@ const PriorityStreamPlayer = ({ stream }: { stream: PriorityStream }) => {
   return <VideoView style={styles.video} player={player} />;
 };
 
-// --- Main Ad Playlist Logic (Definitive and Robust) ---
+// --- Main Ad Playlist Logic (Definitive Crash Fix) ---
 
 const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
-  // 'tick' state forces the timer effect to re-run, fixing single-image loops.
+  // 'tick' state still helps ensure image timers are correctly reset.
   const [tick, setTick] = useState(0);
+
+  // A single, persistent player that is never unmounted. This is the core of the fix.
+  const player = useVideoPlayer(null, p => {
+    p.muted = true; // Mute audio by default, can be changed if needed.
+    p.play();
+  });
 
   const playNextAd = useCallback(() => {
     if (ads.length > 0) {
       setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
-      setTick(t => t + 1); // Guarantees the effect hook will re-run.
+      setTick(t => t + 1);
     }
   }, [ads.length]);
 
-  // This is the definitive timer logic. It correctly handles image ad durations
-  // and is guaranteed to re-run because it depends on the 'tick' state.
-  useEffect(() => {
-    const currentAd = ads[currentAdIndex];
+  // This event listener handles when a video ad finishes playing.
+  useEvent(player, 'ended', playNextAd);
 
-    if (currentAd?.type !== 'image') {
-      return; // Not an image, so no timer needed.
+  const currentAd = ads.length > 0 ? ads[currentAdIndex] : null;
+
+  // This effect is the main orchestrator for the playlist.
+  useEffect(() => {
+    if (!currentAd) return;
+
+    let imageTimer: NodeJS.Timeout | null = null;
+    const uri = currentAd.localUri || currentAd.url;
+
+    if (currentAd.type === 'image') {
+      // For images, we ensure the video player is paused.
+      if (player.isPlaying) {
+        player.pause();
+      }
+      // And we set a timer to advance to the next ad.
+      const duration = (currentAd.duration || 10) * 1000;
+      imageTimer = setTimeout(playNextAd, duration);
+    } else if (currentAd.type === 'video') {
+      // For videos, we check if the player's source is different.
+      // If it is, we replace it. This is more efficient than creating a new player.
+      if (player.source?.uri !== uri) {
+        player.replace(uri);
+      }
+      // Ensure the player is playing.
+      player.play();
     }
 
-    const duration = (currentAd.duration || 10) * 1000;
-    const timerId = setTimeout(playNextAd, duration);
+    // The cleanup function clears the timer to prevent memory leaks.
+    return () => {
+      if (imageTimer) {
+        clearTimeout(imageTimer);
+      }
+    };
+  }, [currentAd, tick, player, playNextAd]); // Depends on the current ad and the tick.
 
-    return () => clearTimeout(timerId);
-  }, [currentAdIndex, ads, tick, playNextAd]);
+  // --- Render Logic ---
 
   if (ads.length === 0) {
     return <ThemedText>Waiting for an ad to be scheduled...</ThemedText>;
   }
-
-  const currentAd = ads[currentAdIndex];
 
   if (!currentAd) {
     return <ThemedText>Loading ad...</ThemedText>;
@@ -95,18 +116,27 @@ const AdPlaylist = ({ ads = [] }: { ads?: Ad[] }) => {
     return <ActivityIndicator size="large" color="#fff" />;
   }
 
+  const isVideo = currentAd.type === 'video';
+  const isImage = currentAd.type === 'image';
   const uri = currentAd.localUri || currentAd.url;
-
-  // The unique key forces React to fully re-mount the component, ensuring
-  // that the new image or video loads correctly every time.
-  const key = `${currentAd.id}-${tick}`;
 
   return (
     <View style={styles.container}>
-      {currentAd.type === 'image' ? (
-        <Image key={key} source={{ uri }} style={styles.adImage} />
-      ) : (
-        <VideoAd key={key} uri={uri} onEnd={playNextAd} />
+      {/*
+        The VideoView is now *always* rendered, preventing the unmount/remount cycle.
+        Its visibility is controlled by the 'display' style property.
+        This prevents the "shared object was already released" native crash.
+      */}
+      <VideoView
+        player={player}
+        style={[styles.video, { display: isVideo ? 'flex' : 'none' }]}
+      />
+      {isImage && uri && (
+        <Image
+          key={`${currentAd.id}-${tick}`}
+          source={{ uri }}
+          style={styles.adImage}
+        />
       )}
     </View>
   );
