@@ -33,7 +33,7 @@ export default function HomeScreen() {
     // The `ads` array is now passed to the correctly implemented AdDisplayScreen.
     // A check for `ads` is kept as a safeguard against race conditions.
     if (ads) {
-      return <AdDisplayScreen ads={ads} priorityStream={priorityStream} />;
+      return <AdDisplayScreen ads={ads} priorityStream={priorityStream} tvId={tvId} />;
     } else {
       // This handles the brief moment before the first ad data is available.
       return (

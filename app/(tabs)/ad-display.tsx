@@ -5,13 +5,16 @@ import { Image, StyleSheet, View } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { Ad, PriorityStream } from "@/hooks/use-tv-group";
+import { recordAdPlayback } from "@/lib/analytics";
 import { WebView } from "react-native-webview";
 
 const AdPlayer = ({
   ad,
+  tvId,
   onAdEnd,
 }: {
   ad: Ad;
+  tvId: string;
   onAdEnd: (ad: Ad) => void;
 }) => {
   const videoRef = useRef<Video>(null);
@@ -20,15 +23,17 @@ const AdPlayer = ({
     let adEndTimeout: NodeJS.Timeout;
 
     if (ad.type === "image") {
+      const duration = ad.duration ?? 10;
       adEndTimeout = setTimeout(() => {
+        recordAdPlayback({ adId: ad.id, tvId, duration });
         onAdEnd(ad);
-      }, (ad.duration ?? 10) * 1000);
+      }, duration * 1000);
     }
 
     return () => {
       clearTimeout(adEndTimeout);
     };
-  }, [ad, onAdEnd]);
+  }, [ad, tvId, onAdEnd]);
 
   if (ad.caching) {
     return (
@@ -52,6 +57,8 @@ const AdPlayer = ({
           isLooping={false}
           onPlaybackStatusUpdate={(status) => {
             if (status.isLoaded && status.didJustFinish) {
+              const duration = (status.durationMillis ?? 0) / 1000;
+              recordAdPlayback({ adId: ad.id, tvId, duration });
               onAdEnd(ad);
             }
           }}
@@ -71,9 +78,11 @@ const AdPlayer = ({
 export default function AdDisplayScreen({
   ads,
   priorityStream,
+  tvId,
 }: {
   ads: Ad[];
   priorityStream: PriorityStream | null;
+  tvId: string;
 }) {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
 
@@ -135,6 +144,7 @@ export default function AdDisplayScreen({
     <AdPlayer
       key={ads[currentAdIndex].id}
       ad={ads[currentAdIndex]}
+      tvId={tvId}
       onAdEnd={handleAdEnd}
     />
   );
