@@ -1,7 +1,7 @@
 
 import { WEBSOCKET_URL } from "@/constants/api";
 import { Ad, PriorityStream, fetchTvState } from "@/lib/api";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import { useEffect, useState } from "react";
 
 const adCacheDir = FileSystem.cacheDirectory + "ad-cache/";
@@ -12,10 +12,9 @@ const getCacheFilename = (url: string) => {
 
 // Function to ensure the cache directory exists
 const ensureDirExists = async () => {
-  const dirInfo = await FileSystem.getInfoAsync(adCacheDir);
-  if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(adCacheDir, { intermediates: true });
-  }
+  // Using makeDirectoryAsync with intermediates: true ensures the directory exists
+  // and doesn't throw an error if it already exists.
+  await FileSystem.makeDirectoryAsync(adCacheDir, { intermediates: true });
 };
 
 // Function to clean up old ad files from the cache
@@ -28,7 +27,7 @@ const cleanupCache = async (activeAds: Ad[]) => {
     for (const filename of cachedFiles) {
       if (!activeFilenames.has(filename)) {
         console.log("deleting", filename);
-        await FileSystem.deleteAsync(adCacheDir + filename);
+        await FileSystem.deleteAsync(adCacheDir + filename, { idempotent: true });
       }
     }
   } catch (error) {
@@ -42,12 +41,23 @@ const processAds = async (
 ) => {
   await ensureDirExists();
 
-  ads.forEach(async (ad, i) => {
+  // Using a sequential for...of loop to process ads one by one.
+  // This avoids race conditions from parallel state updates and fixes the timer bug.
+  for (const ad of ads) {
     const filename = getCacheFilename(ad.url);
     const localUri = adCacheDir + filename;
-    const fileInfo = await FileSystem.getInfoAsync(localUri);
 
-    if (fileInfo.exists) {
+    let fileExists = false;
+    try {
+      // Check for file existence by trying to access its content URI.
+      // This will throw an error if the file doesn't exist.
+      await FileSystem.getContentUriAsync(localUri);
+      fileExists = true;
+    } catch (e) {
+      fileExists = false;
+    }
+
+    if (fileExists) {
       setAds((prev) =>
         prev.map((prevAd) =>
           prevAd.id === ad.id ? { ...prevAd, localUri, caching: false } : prevAd
@@ -69,6 +79,7 @@ const processAds = async (
         );
       } catch (error) {
         console.error("Failed to download ad:", ad.url, error);
+        // If download fails, just mark caching as false
         setAds((prev) =>
           prev.map((prevAd) =>
             prevAd.id === ad.id ? { ...prevAd, caching: false } : prevAd
@@ -76,7 +87,7 @@ const processAds = async (
         );
       }
     }
-  });
+  }
 };
 
 export function useTvData(tvId: string | null) {
@@ -94,10 +105,10 @@ export function useTvData(tvId: string | null) {
       setAds(state.playlist?.ads ?? []);
       setPriorityStream(state.group?.priorityStream ?? null);
       if (state.playlist?.ads) {
-        cleanupCache(state.playlist.ads);
-        processAds(state.playlist.ads, setAds);
+        await cleanupCache(state.playlist.ads);
+        await processAds(state.playlist.ads, setAds);
       }
-    } catch (error) {
+    } catch (error) { 
       console.error(error);
       setIsInGroup(false);
       setAds([]);
