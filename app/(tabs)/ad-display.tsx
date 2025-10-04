@@ -1,78 +1,11 @@
-
-import Video from "expo-video";
-import { useEffect, useRef, useState } from "react";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { useEffect, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
+import { WebView } from "react-native-webview";
 
 import { ThemedText } from "@/components/themed-text";
 import { Ad, PriorityStream } from "@/hooks/use-tv-group";
 import { recordAdPlayback } from "@/lib/analytics";
-import { WebView } from "react-native-webview";
-
-const AdPlayer = ({
-  ad,
-  tvId,
-  onAdEnd,
-}: {
-  ad: Ad;
-  tvId: string;
-  onAdEnd: (ad: Ad) => void;
-}) => {
-  const videoRef = useRef<Video>(null);
-  const [videoDuration, setVideoDuration] = useState(0);
-
-  useEffect(() => {
-    let adEndTimeout: NodeJS.Timeout;
-
-    if (ad.type === "image") {
-      const duration = ad.duration ?? 10;
-      adEndTimeout = setTimeout(() => {
-        recordAdPlayback({ adId: ad.id, tvId, duration });
-        onAdEnd(ad);
-      }, duration * 1000);
-    }
-
-    return () => {
-      clearTimeout(adEndTimeout);
-    };
-  }, [ad, tvId, onAdEnd]);
-
-  if (ad.caching) {
-    return (
-      <View style={styles.container}>
-        <ThemedText>Caching...</ThemedText>
-      </View>
-    );
-  }
-
-  return (
-    <View style={{ flex: 1, width: "100%", height: "100%" }}>
-      {ad.type === "video" ? (
-        <Video
-          ref={videoRef}
-          style={{ flex: 1 }}
-          source={{
-            uri: ad.localUri ?? ad.url,
-          }}
-          nativeControls={false}
-          resizeMode="contain"
-          loop={false}
-          onLoad={(e: any) => setVideoDuration(e.duration)}
-          onEnd={() => {
-            recordAdPlayback({ adId: ad.id, tvId, duration: videoDuration });
-            onAdEnd(ad);
-          }}
-          playing
-        />
-      ) : (
-        <Image
-          style={{ flex: 1 }}
-          source={{ uri: ad.localUri ?? ad.url }}
-          resizeMode="contain"
-        />
-      )}
-    </View>
-  );
-};
 
 export default function AdDisplayScreen({
   ads,
@@ -86,12 +19,26 @@ export default function AdDisplayScreen({
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [adPlayCount, setAdPlayCount] = useState(0);
 
-  useEffect(() => {
-    // If the currently displayed ad is removed from the playlist, reset to the first ad.
-    if (currentAdIndex >= ads.length) {
-      setCurrentAdIndex(0);
+  const currentAd = ads.length > 0 ? ads[currentAdIndex] : null;
+
+  const isPriorityVideo = priorityStream && priorityStream.type !== "youtube";
+  const isAdVideo = !priorityStream && currentAd?.type === "video";
+
+  const videoSource = isPriorityVideo
+    ? { uri: priorityStream.url }
+    : isAdVideo
+    ? { uri: currentAd.localUri ?? currentAd.url }
+    : null;
+
+  const player = useVideoPlayer(videoSource, (p) => {
+    if (isPriorityVideo) {
+      p.loop = true;
+      p.play();
+    } else if (isAdVideo) {
+      p.loop = false;
+      p.play();
     }
-  }, [ads]);
+  });
 
   const handleAdEnd = () => {
     if (ads.length > 0) {
@@ -103,6 +50,53 @@ export default function AdDisplayScreen({
     }
   };
 
+  useEffect(() => {
+    // If the currently displayed ad is removed from the playlist, reset to the first ad.
+    if (currentAdIndex >= ads.length) {
+      setCurrentAdIndex(0);
+    }
+  }, [ads, currentAdIndex]);
+
+  // Effect for handling video ad completion
+  useEffect(() => {
+    if (!isAdVideo) return;
+
+    const subscription = player.addListener("statusChange", (status) => {
+      if (status.isFinished) {
+        const duration = player.duration ?? 0;
+        recordAdPlayback({ adId: currentAd!.id, tvId, duration });
+        handleAdEnd();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [player, isAdVideo, currentAd, tvId]);
+
+  // Effect for handling image ad duration
+  useEffect(() => {
+    if (priorityStream || !currentAd || currentAd.type !== "image") {
+      return;
+    }
+
+    const duration = currentAd.duration ?? 10;
+    const timeoutId = setTimeout(() => {
+      recordAdPlayback({ adId: currentAd.id, tvId, duration });
+      handleAdEnd();
+    }, duration * 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [priorityStream, currentAd, tvId, adPlayCount]); // re-run if the same image ad plays again
+
+  // Effect to unload the player when the component unmounts or source changes
+  useEffect(() => {
+    return () => {
+      player.unload();
+    };
+  }, [player]);
+
+  // Render Priority Stream
   if (priorityStream) {
     if (priorityStream.type === "youtube") {
       return (
@@ -113,44 +107,54 @@ export default function AdDisplayScreen({
       );
     }
     return (
-      <Video
-        style={{ flex: 1, width: "100%", height: "100%" }}
-        source={{
-          uri: priorityStream.url,
-        }}
+      <VideoView
+        style={styles.fill}
+        player={player}
         nativeControls={false}
-        resizeMode="contain"
-        loop
-        playing
+        contentFit="contain"
       />
     );
   }
 
-  if (!ads.length) {
-    return (
-      <View style={styles.container}>
-        <ThemedText>Waiting for an ad to be scheduled...</ThemedText>
-      </View>
-    );
+  // Render Ads
+  if (currentAd) {
+    if (currentAd.caching) {
+      return (
+        <View style={styles.container}>
+          <ThemedText>Caching...</ThemedText>
+        </View>
+      );
+    }
+
+    if (currentAd.type === "video") {
+      return (
+        <VideoView
+          key={`${currentAd.id}-${adPlayCount}`}
+          style={styles.fill}
+          player={player}
+          nativeControls={false}
+          contentFit="contain"
+        />
+      );
+    }
+
+    if (currentAd.type === "image") {
+      return (
+        <Image
+          key={`${currentAd.id}-${adPlayCount}`}
+          style={styles.fill}
+          source={{ uri: currentAd.localUri ?? currentAd.url }}
+          resizeMode="contain"
+        />
+      );
+    }
   }
 
-  // This check prevents a crash if the currentAdIndex is out of bounds
-  // before the useEffect has a chance to run.
-  if (currentAdIndex >= ads.length) {
-    return (
-      <View style={styles.container}>
-        <ThemedText>Loading...</ThemedText>
-      </View>
-    );
-  }
-
+  // Default placeholder
   return (
-    <AdPlayer
-      key={`${ads[currentAdIndex].id}-${adPlayCount}`}
-      ad={ads[currentAdIndex]}
-      tvId={tvId}
-      onAdEnd={handleAdEnd}
-    />
+    <View style={styles.container}>
+      <ThemedText>Waiting for an ad to be scheduled...</ThemedText>
+    </View>
   );
 }
 
@@ -160,6 +164,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#000",
+  },
+  fill: {
+    flex: 1,
     width: "100%",
     height: "100%",
   },
