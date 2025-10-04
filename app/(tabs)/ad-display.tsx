@@ -89,13 +89,6 @@ export default function AdDisplayScreen({
     return () => clearTimeout(timeoutId);
   }, [priorityStream, currentAd, tvId, adPlayCount]); // re-run if the same image ad plays again
 
-  // Effect to unload the player when the component unmounts or source changes
-  useEffect(() => {
-    return () => {
-      player.unload();
-    };
-  }, [player]);
-
   // Render Priority Stream
   if (priorityStream) {
     if (priorityStream.type === "youtube") {
