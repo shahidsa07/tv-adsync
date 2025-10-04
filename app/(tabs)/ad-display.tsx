@@ -1,5 +1,5 @@
 
-import { ResizeMode, Video } from "expo-video";
+import { Video } from "expo-video";
 import { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
@@ -54,7 +54,7 @@ const AdPlayer = ({
             uri: ad.localUri ?? ad.url,
           }}
           nativeControls={false}
-          resizeMode={ResizeMode.CONTAIN}
+          resizeMode="contain"
           loop={false}
           onLoad={(e: any) => setVideoDuration(e.duration)}
           onEnd={() => {
@@ -119,7 +119,7 @@ export default function AdDisplayScreen({
           uri: priorityStream.url,
         }}
         nativeControls={false}
-        resizeMode={ResizeMode.CONTAIN}
+        resizeMode="contain"
         loop
         playing
       />
