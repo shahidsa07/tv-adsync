@@ -33,17 +33,12 @@ export default function AdDisplayScreen({
   const player = useVideoPlayer(videoSource, (p) => {
     if (isPriorityVideo) {
       p.loop = true;
+      p.play();
     } else if (isAdVideo) {
       p.loop = ads.length === 1;
+      p.play();
     }
   });
-
-  // Effect to play the video when the source changes
-  useEffect(() => {
-    if (videoSource) {
-      player.play();
-    }
-  }, [player, videoSource]);
 
   const handleAdEnd = () => {
     if (ads.length > 0) {
