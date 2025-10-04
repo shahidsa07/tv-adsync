@@ -1,5 +1,5 @@
 
-import { Video } from "expo-video";
+import Video from "expo-video";
 import { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
