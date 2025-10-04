@@ -1,5 +1,5 @@
 
-import { ResizeMode, Video } from "expo-av";
+import { ResizeMode, Video } from "expo-video";
 import { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
@@ -18,6 +18,7 @@ const AdPlayer = ({
   onAdEnd: (ad: Ad) => void;
 }) => {
   const videoRef = useRef<Video>(null);
+  const [videoDuration, setVideoDuration] = useState(0);
 
   useEffect(() => {
     let adEndTimeout: NodeJS.Timeout;
@@ -52,17 +53,15 @@ const AdPlayer = ({
           source={{
             uri: ad.localUri ?? ad.url,
           }}
-          useNativeControls={false}
+          nativeControls={false}
           resizeMode={ResizeMode.CONTAIN}
-          isLooping={false}
-          onPlaybackStatusUpdate={(status) => {
-            if (status.isLoaded && status.didJustFinish) {
-              const duration = (status.durationMillis ?? 0) / 1000;
-              recordAdPlayback({ adId: ad.id, tvId, duration });
-              onAdEnd(ad);
-            }
+          loop={false}
+          onLoad={(e: any) => setVideoDuration(e.duration)}
+          onEnd={() => {
+            recordAdPlayback({ adId: ad.id, tvId, duration: videoDuration });
+            onAdEnd(ad);
           }}
-          shouldPlay
+          playing
         />
       ) : (
         <Image
@@ -119,10 +118,10 @@ export default function AdDisplayScreen({
         source={{
           uri: priorityStream.url,
         }}
-        useNativeControls={false}
+        nativeControls={false}
         resizeMode={ResizeMode.CONTAIN}
-        isLooping
-        shouldPlay
+        loop
+        playing
       />
     );
   }
