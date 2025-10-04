@@ -20,35 +20,40 @@ export default function AdDisplayScreen({
   const [adPlayCount, setAdPlayCount] = useState(0);
 
   const currentAd = ads.length > 0 ? ads[currentAdIndex] : null;
-
-  const isPriorityVideo = priorityStream && priorityStream.type !== "youtube";
-  const isAdVideo = !priorityStream && currentAd?.type === "video";
-
-  const videoSource = isPriorityVideo
-    ? { uri: priorityStream.url }
-    : isAdVideo
-    ? { uri: currentAd.localUri ?? currentAd.url }
-    : null;
-
-  const player = useVideoPlayer(videoSource, (p) => {
-    if (isPriorityVideo) {
-      p.loop = true;
-      p.play();
-    } else if (isAdVideo) {
-      p.loop = ads.length === 1;
-      p.play();
-    }
-  });
+  // Initialize the player with a null source. We will control it imperatively.
+  const player = useVideoPlayer(null);
 
   const handleAdEnd = () => {
     if (ads.length > 0) {
       if (ads.length === 1) {
+        // Increment adPlayCount to re-trigger effects for the same ad
         setAdPlayCount((prev) => prev + 1);
       } else {
         setCurrentAdIndex((prev) => (prev + 1) % ads.length);
       }
     }
   };
+
+  // Imperatively control the video player's source and state.
+  useEffect(() => {
+    const isPriorityVideo = priorityStream && priorityStream.type !== "youtube";
+    const isAdVideo = !priorityStream && currentAd?.type === "video";
+
+    const source = isPriorityVideo
+      ? { uri: priorityStream.url }
+      : isAdVideo
+      ? { uri: currentAd.localUri ?? currentAd.url }
+      : null;
+
+    if (source) {
+      player.replace(source);
+      player.loop = isPriorityVideo || (isAdVideo && ads.length === 1);
+      player.play();
+    } else {
+      player.replace(null); // Unload video if no source
+    }
+    // This effect re-runs whenever the ad, priority stream, or play count changes.
+  }, [player, currentAd, priorityStream, ads.length, adPlayCount]);
 
   useEffect(() => {
     // If the currently displayed ad is removed from the playlist, reset to the first ad.
@@ -59,13 +64,13 @@ export default function AdDisplayScreen({
 
   // Effect for handling video ad completion
   useEffect(() => {
-    if (!isAdVideo) return;
+    if (!currentAd || currentAd.type !== "video" || priorityStream) return;
 
     const subscription = player.addListener("statusChange", (status) => {
       // For non-looping videos, advance to the next ad when finished.
       if (status.isFinished && !player.loop) {
         const duration = player.duration ?? 0;
-        recordAdPlayback({ adId: currentAd!.id, tvId, duration });
+        recordAdPlayback({ adId: currentAd.id, tvId, duration });
         handleAdEnd();
       }
     });
@@ -73,7 +78,8 @@ export default function AdDisplayScreen({
     return () => {
       subscription.remove();
     };
-  }, [player, isAdVideo, currentAd, tvId]);
+    // This effect should only depend on values that define the current ad context
+  }, [player, currentAd, tvId, priorityStream]);
 
   // Effect for handling image ad duration
   useEffect(() => {
@@ -90,16 +96,20 @@ export default function AdDisplayScreen({
     return () => clearTimeout(timeoutId);
   }, [priorityStream, currentAd, tvId, adPlayCount]); // re-run if the same image ad plays again
 
-  // Render Priority Stream
-  if (priorityStream) {
-    if (priorityStream.type === "youtube") {
-      return (
-        <WebView
-          source={{ uri: priorityStream.url }}
-          style={{ flex: 1, width: "100%", height: "100%" }}
-        />
-      );
-    }
+  // --- RENDER LOGIC ---
+
+  const isVideoPlaying = (priorityStream && priorityStream.type !== "youtube") || (currentAd && currentAd.type === "video");
+
+  if (priorityStream?.type === "youtube") {
+    return (
+      <WebView
+        source={{ uri: priorityStream.url }}
+        style={styles.fill}
+      />
+    );
+  }
+
+  if (isVideoPlaying) {
     return (
       <VideoView
         style={styles.fill}
@@ -110,41 +120,25 @@ export default function AdDisplayScreen({
     );
   }
 
-  // Render Ads
-  if (currentAd) {
-    if (currentAd.caching) {
-      return (
-        <View style={styles.container}>
-          <ThemedText>Caching...</ThemedText>
-        </View>
-      );
-    }
-
-    if (currentAd.type === "video") {
-      return (
-        <VideoView
-          key={`${currentAd.id}-${adPlayCount}`}
-          style={styles.fill}
-          player={player}
-          nativeControls={false}
-          contentFit="contain"
-        />
-      );
-    }
-
-    if (currentAd.type === "image") {
-      return (
-        <Image
-          key={`${currentAd.id}-${adPlayCount}`}
-          style={styles.fill}
-          source={{ uri: currentAd.localUri ?? currentAd.url }}
-          resizeMode="contain"
-        />
-      );
-    }
+  if (currentAd?.type === "image") {
+    return (
+      <Image
+        key={`${currentAd.id}-${adPlayCount}`}
+        style={styles.fill}
+        source={{ uri: currentAd.localUri ?? currentAd.url }}
+        resizeMode="contain"
+      />
+    );
   }
 
-  // Default placeholder
+  if (currentAd?.caching) {
+    return (
+      <View style={styles.container}>
+        <ThemedText>Caching...</ThemedText>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ThemedText>Waiting for an ad to be scheduled...</ThemedText>
