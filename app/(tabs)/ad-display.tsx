@@ -33,12 +33,17 @@ export default function AdDisplayScreen({
   const player = useVideoPlayer(videoSource, (p) => {
     if (isPriorityVideo) {
       p.loop = true;
-      p.play();
     } else if (isAdVideo) {
-      p.loop = false;
-      p.play();
+      p.loop = ads.length === 1;
     }
   });
+
+  // Effect to play the video when the source changes
+  useEffect(() => {
+    if (videoSource) {
+      player.play();
+    }
+  }, [player, videoSource]);
 
   const handleAdEnd = () => {
     if (ads.length > 0) {
@@ -62,7 +67,8 @@ export default function AdDisplayScreen({
     if (!isAdVideo) return;
 
     const subscription = player.addListener("statusChange", (status) => {
-      if (status.isFinished) {
+      // For non-looping videos, advance to the next ad when finished.
+      if (status.isFinished && !player.loop) {
         const duration = player.duration ?? 0;
         recordAdPlayback({ adId: currentAd!.id, tvId, duration });
         handleAdEnd();
