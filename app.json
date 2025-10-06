@@ -30,7 +30,6 @@
           ]
         }
       ],
-      "usesCleartextTraffic": true,
       "permissions": [
         "INTERNET"
       ]
@@ -38,6 +37,13 @@
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
-    }
+    },
+    "plugins": [
+      ["expo-build-properties", {
+        "android": {
+          "usesCleartextTraffic": true
+        }
+      }]
+    ]
   }
 }
